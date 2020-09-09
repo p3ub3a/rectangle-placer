@@ -10,6 +10,7 @@ public class RectangleCanvas extends JFrame {
     public RectangleCanvas(){
         setTitle("Rectangles");
         setBounds(100,100, FRAME_WIDTH, FRAME_HEIGHT);
+        setPreferredSize(new Dimension(FRAME_WIDTH, FRAME_HEIGHT));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         getContentPane().add(BorderLayout.NORTH, new SettingsPanel(this));
         setVisible(true);
