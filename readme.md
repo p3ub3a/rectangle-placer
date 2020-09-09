@@ -36,4 +36,6 @@ If no line is found, a new one is created and the rectangle will be placed there
 * rectangle placement (setting the x,y coordinates) is synchronized in order to avoid multiple threads placing rectangles in the same spot;
 * in the end, the ExecutorService is shutdown by calling **awaitTerminationAfterShutdown(rectangleService)**.
 
-
+##### User interface
+* *RectangleCanvas* is a **JFrame** which encapsulates a **JPanel** named *SettingsPanel* and  a **JComponent** that draws the rectangles;
+* *SettingsPanel* contains 2 input fields for thread number and rectangles number, a generate button and a running time label.
