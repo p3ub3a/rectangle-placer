@@ -17,8 +17,10 @@ public class RectangleService {
     private static List<Rectangle> rectangles;
 
     private static List<Rectangle> sortedRectangles;
+    
+    private static List<Line> lines;
 
-    private static BlockingQueue<Line> rectangleDeque = new LinkedBlockingDeque<>();
+    private static BlockingQueue<Line> linesDeque = new LinkedBlockingDeque<>();
 
     private static int currentLineHeight;
 
@@ -28,12 +30,35 @@ public class RectangleService {
         rectangleService = Executors.newFixedThreadPool(threadNr);
         generateRectangles(rectangleNr);
         splitWork(threadNr);
+        placeRectangles();
+
+        while(rectangles.size() > 0){
+            for(int i=0; i < rectangles.size(); i++){
+                for(int j = 0; j < lines.size(); j++){
+                    if(placeRectangle(rectangles.get(i), lines.get(j))){
+                        break;
+                    }else{
+                        if(j == lines.size() - 1){
+                            int lineIndex = lines.get(j).getIndex() + 1;
+                            Rectangle[] remainingRectangles = new Rectangle[rectangles.size()];
+                            createNewLine(rectangles.toArray(remainingRectangles), lineIndex);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return sortedRectangles;
+    }
+
+    private static void placeRectangles() {
         sortedRectangles = new ArrayList<>();
 
-        while(!rectangleDeque.isEmpty()){
+        while(!linesDeque.isEmpty()){
             Future<String> futureMessage = rectangleService.submit(() -> {
                 try {
-                    processLine(rectangleDeque.take());
+                    processLine(linesDeque.take());
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -51,8 +76,6 @@ public class RectangleService {
         }
 
         awaitTerminationAfterShutdown(rectangleService);
-
-        return sortedRectangles;
     }
 
     private static void splitWork(int threadNumber) {
@@ -61,11 +84,11 @@ public class RectangleService {
         int offset = 0;
         int lineIndex = 0;
         currentLineHeight = 0;
+        lines = new ArrayList<>();
 
         for(int i = 0; i < rectangles.size(); i++){
             if(i!=0 && i % splitRectanglesSize == 0){
-                System.out.println("trece");
-                rectangleDeque.add(createNewLine(splitRectangles, lineIndex));
+                linesDeque.add(createNewLine(splitRectangles, lineIndex));
                 splitRectangles = new Rectangle[splitRectanglesSize];
                 offset += splitRectanglesSize;
                 lineIndex++;
@@ -74,7 +97,7 @@ public class RectangleService {
             splitRectangles[i - offset] = rectangles.get(i);
 
             if(i == rectangles.size() - 1){
-                rectangleDeque.add(createNewLine(splitRectangles, lineIndex));
+                linesDeque.add(createNewLine(splitRectangles, lineIndex));
             }
         }
     }
@@ -86,6 +109,7 @@ public class RectangleService {
         currentLineHeight += splitRectangles[0].getHeight();
         line.setIndex(lineIndex);
         line.setRectangles(splitRectangles);
+        lines.add(line);
 
         return line;
     }
@@ -116,7 +140,7 @@ public class RectangleService {
         }
     }
 
-    private static void placeRectangle(Rectangle rectangle, Line line){
+    private static boolean placeRectangle(Rectangle rectangle, Line line){
         if(rectangle.getWidth() < line.getRemainingWidth() ){
             rectangle.setY(line.getHeight());
             rectangle.setX(FRAME_WIDTH - line.getRemainingWidth());
@@ -124,8 +148,10 @@ public class RectangleService {
             line.setRemainingWidth( line.getRemainingWidth() - rectangle.getWidth() );
 
             sortedRectangles.add(rectangle);
-            rectangles.remove(rectangle);
+            return rectangles.remove(rectangle);
         }
+
+        return false;
     }
 
     public static void awaitTerminationAfterShutdown(ExecutorService threadPool) {
