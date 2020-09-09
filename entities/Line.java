@@ -9,8 +9,6 @@ public class Line {
 
     private int index;
 
-    private Rectangle[] rectangles;
-
     public int getHeight() {
         return height;
     }
@@ -33,13 +31,5 @@ public class Line {
 
     public void setIndex(int index) {
         this.index = index;
-    }
-
-    public void setRectangles(Rectangle[] rectangles){
-        this.rectangles = rectangles;
-    }
-
-    public Rectangle[] getRectangles(){
-        return rectangles;
     }
 }

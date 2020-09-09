@@ -12,19 +12,19 @@ import static utils.Constants.*;
 import static utils.Constants.FRAME_WIDTH;
 
 public class RectangleService {
-    private static Object lock = new Object();
-
     private static List<Rectangle> rectangles;
 
-    private static List<Rectangle> sortedRectangles;
+    private static List<Rectangle> placedRectangles;
     
     private static List<Line> lines;
 
-    private static BlockingQueue<Line> linesDeque = new LinkedBlockingDeque<>();
+    private static BlockingQueue<List<Rectangle>> linesDeque = new LinkedBlockingDeque<>();
 
     private static int currentLineHeight;
 
     private static ExecutorService rectangleService;
+
+    private static Object lock = new Object();
 
     public static List<Rectangle> runRectanglePlacement(int threadNr, int rectangleNr) {
         rectangleService = Executors.newFixedThreadPool(threadNr);
@@ -32,28 +32,11 @@ public class RectangleService {
         splitWork(threadNr);
         placeRectangles();
 
-        while(rectangles.size() > 0){
-            for(int i=0; i < rectangles.size(); i++){
-                for(int j = 0; j < lines.size(); j++){
-                    if(placeRectangle(rectangles.get(i), lines.get(j))){
-                        break;
-                    }else{
-                        if(j == lines.size() - 1){
-                            int lineIndex = lines.get(j).getIndex() + 1;
-                            Rectangle[] remainingRectangles = new Rectangle[rectangles.size()];
-                            createNewLine(rectangles.toArray(remainingRectangles), lineIndex);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        return sortedRectangles;
+        return placedRectangles;
     }
 
     private static void placeRectangles() {
-        sortedRectangles = new ArrayList<>();
+        placedRectangles = new ArrayList<>();
 
         while(!linesDeque.isEmpty()){
             Future<String> futureMessage = rectangleService.submit(() -> {
@@ -80,35 +63,30 @@ public class RectangleService {
 
     private static void splitWork(int threadNumber) {
         int splitRectanglesSize = rectangles.size() / threadNumber;
-        Rectangle[] splitRectangles = new Rectangle[splitRectanglesSize];
-        int offset = 0;
-        int lineIndex = 0;
+        List<Rectangle> splitRectanglesAL = new ArrayList<>();
         currentLineHeight = 0;
-        lines = new ArrayList<>();
+        lines = new CopyOnWriteArrayList<>();
 
         for(int i = 0; i < rectangles.size(); i++){
             if(i!=0 && i % splitRectanglesSize == 0){
-                linesDeque.add(createNewLine(splitRectangles, lineIndex));
-                splitRectangles = new Rectangle[splitRectanglesSize];
-                offset += splitRectanglesSize;
-                lineIndex++;
+                linesDeque.add(splitRectanglesAL);
+                splitRectanglesAL = new ArrayList<>();
             }
 
-            splitRectangles[i - offset] = rectangles.get(i);
+            splitRectanglesAL.add(rectangles.get(i));
 
             if(i == rectangles.size() - 1){
-                linesDeque.add(createNewLine(splitRectangles, lineIndex));
+                linesDeque.add(splitRectanglesAL);
             }
         }
     }
 
-    private static Line createNewLine(Rectangle[] splitRectangles, int lineIndex) {
+    private static Line createNewLine(List<Rectangle> splitRectangles, int lineIndex) {
         Line line = new Line();
 
         line.setHeight(currentLineHeight);
-        currentLineHeight += splitRectangles[0].getHeight();
+        currentLineHeight += splitRectangles.get(0).getHeight();
         line.setIndex(lineIndex);
-        line.setRectangles(splitRectangles);
         lines.add(line);
 
         return line;
@@ -127,31 +105,40 @@ public class RectangleService {
         Collections.sort(rectangles, new HeightComparator());
     }
 
-    private static void processLine(Line line){
-        Rectangle[] retrievedRectangles = line.getRectangles();
-
-        if(retrievedRectangles != null){
-            for(int i=0; i < retrievedRectangles.length; i++){
-                if(retrievedRectangles[i] != null){
-                    placeRectangle(retrievedRectangles[i], line);
+    private static void processLine(List<Rectangle> retrievedRectangles){
+        createNewLine(retrievedRectangles, 0);
+        while(retrievedRectangles.size() > 0){
+            for(int i=0; i < retrievedRectangles.size(); i++){
+                for(int j = 0; j < lines.size(); j++){
+                    if(placeRectangle(retrievedRectangles.get(i), lines.get(j))){
+                        retrievedRectangles.remove(retrievedRectangles.get(i));
+                        break;
+                    }else{
+                        if(j == lines.size() - 1){
+                            int lineIndex = lines.get(j).getIndex() + 1;
+                            createNewLine(retrievedRectangles, lineIndex);
+                            break;
+                        }
+                    }
                 }
             }
-
         }
     }
 
     private static boolean placeRectangle(Rectangle rectangle, Line line){
-        if(rectangle.getWidth() < line.getRemainingWidth() ){
-            rectangle.setY(line.getHeight());
-            rectangle.setX(FRAME_WIDTH - line.getRemainingWidth());
+        synchronized (lock){
+            if(rectangle.getWidth() < line.getRemainingWidth() ){
+                rectangle.setY(line.getHeight());
+                rectangle.setX(FRAME_WIDTH - line.getRemainingWidth());
 
-            line.setRemainingWidth( line.getRemainingWidth() - rectangle.getWidth() );
+                line.setRemainingWidth( line.getRemainingWidth() - rectangle.getWidth() );
 
-            sortedRectangles.add(rectangle);
-            return rectangles.remove(rectangle);
+                placedRectangles.add(rectangle);
+                return rectangles.remove(rectangle);
+            }
+
+            return false;
         }
-
-        return false;
     }
 
     public static void awaitTerminationAfterShutdown(ExecutorService threadPool) {
